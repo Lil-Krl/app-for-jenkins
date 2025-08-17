@@ -1,0 +1,71 @@
+#!groovy
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB_CREDENTIALS = 'dockerhub-creds'
+        DOCKER_HUB_USER        = 'lilkrl068'
+        APP_NAME                = 'myapp'
+        VERSION_TAG             = "0.${BUILD_NUMBER}"
+        PROD_SERVER             = 'jenkinsdeploy@185.207.66.75' // SSH-доступ к серверу
+        SSH_CREDENTIALS         = 'prod-ssh-key'              // Jenkins credentials для SSH
+        PROD_CONTAINER_NAME     = 'myapp-container'
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
+        timestamps()
+    }
+
+    stages {
+        stage("Checkout") {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage("Build Docker Image") {
+            steps {
+                dir('.') {
+                    sh "docker build --network=host -t ${APP_NAME}:${VERSION_TAG} ."
+                }
+            }
+        }
+
+        stage("Push to Docker Hub") {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', "${DOCKER_HUB_CREDENTIALS}") {
+                        sh "docker tag ${APP_NAME}:${VERSION_TAG} ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG}"
+                        sh "docker tag ${APP_NAME}:${VERSION_TAG} ${DOCKER_HUB_USER}/${APP_NAME}:latest"
+                        sh "docker push ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG}"
+                        sh "docker push ${DOCKER_HUB_USER}/${APP_NAME}:latest"
+                    }
+                }
+            }
+        }
+
+        stage("Cleanup Local Images") {
+            steps {
+                sh "docker rmi ${APP_NAME}:${VERSION_TAG} || true"
+                sh "docker rmi ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG} || true"
+                sh "docker rmi ${DOCKER_HUB_USER}/${APP_NAME}:latest || true"
+            }
+        }
+
+        stage("Deploy to PROD") {
+            steps {
+                sshagent([SSH_CREDENTIALS]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${PROD_SERVER} '
+                            docker pull ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG} &&
+                            docker stop ${PROD_CONTAINER_NAME} || true &&
+                            docker rm ${PROD_CONTAINER_NAME} || true &&
+                            docker run -d --name ${PROD_CONTAINER_NAME} -p 32777:32777 ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG}
+                        '
+                    """
+                }
+            }
+        }
+    }
+}
