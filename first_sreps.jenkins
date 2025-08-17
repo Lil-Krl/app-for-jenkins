@@ -13,7 +13,7 @@ pipeline {
       steps {
         echo "============ start building image ============"
         dir ('.') {
-          sh 'docker build -t app:0.${BUILD_NUMBER} .'
+          sh 'docker build --network=host -t app:0.${BUILD_NUMBER} .'
         }
       }
     }
