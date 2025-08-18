@@ -61,7 +61,7 @@ pipeline {
                             docker pull ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG} &&
                             docker stop ${PROD_CONTAINER_NAME} || true &&
                             docker rm ${PROD_CONTAINER_NAME} || true &&
-                            docker run -d --name ${PROD_CONTAINER_NAME} -p 32777:32777 ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG}
+                            docker run -d --name ${PROD_CONTAINER_NAME} --restart=unless-stopped -p 32777:32777 ${DOCKER_HUB_USER}/${APP_NAME}:${VERSION_TAG}
                         '
                     """
                 }
